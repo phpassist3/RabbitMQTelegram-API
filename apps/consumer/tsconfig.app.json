@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../dist/apps/consumer"
+  },
+  "include": ["src/**/*", "../../libs/contracts/src/**/*", "../../libs/messaging/src/**/*"],
+  "exclude": ["node_modules", "test", "dist", "**/*.spec.ts"]
+}

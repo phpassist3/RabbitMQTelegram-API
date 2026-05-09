@@ -1,0 +1,80 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: notif-rabbitmq
+    ports:
+      - "${RABBITMQ_AMQP_PORT:-5672}:5672"
+      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - rabbit-data:/var/lib/rabbitmq
+
+  producer:
+    build:
+      context: .
+      dockerfile: apps/producer/Dockerfile
+    container_name: notif-producer
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672
+      PRODUCER_PORT: 3000
+      PRODUCER_API_PREFIX: api
+      RABBITMQ_PUBLISH_TIMEOUT_MS: ${RABBITMQ_PUBLISH_TIMEOUT_MS:-5000}
+      RABBITMQ_PUBLISH_RETRIES: ${RABBITMQ_PUBLISH_RETRIES:-5}
+      RABBITMQ_PUBLISH_BACKOFF_MS: ${RABBITMQ_PUBLISH_BACKOFF_MS:-500}
+    ports:
+      - "${PRODUCER_PORT:-3000}:3000"
+    restart: unless-stopped
+
+  consumer:
+    build:
+      context: .
+      dockerfile: apps/consumer/Dockerfile
+    container_name: notif-consumer
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672
+      CONSUMER_PORT: 3001
+      CONSUMER_PREFETCH: ${CONSUMER_PREFETCH:-10}
+      CONSUMER_MAX_ATTEMPTS: ${CONSUMER_MAX_ATTEMPTS:-5}
+      CONSUMER_RETRY_DELAY_MS: ${CONSUMER_RETRY_DELAY_MS:-5000}
+      IDEMPOTENCY_CACHE_SIZE: ${IDEMPOTENCY_CACHE_SIZE:-10000}
+    ports:
+      - "${CONSUMER_PORT:-3001}:3001"
+    restart: unless-stopped
+
+  telegram:
+    build:
+      context: .
+      dockerfile: apps/telegram/Dockerfile
+    container_name: notif-telegram
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672
+      TELEGRAM_PORT: 3002
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_DEFAULT_CHAT_ID: ${TELEGRAM_DEFAULT_CHAT_ID:-}
+      TELEGRAM_API_TIMEOUT_MS: ${TELEGRAM_API_TIMEOUT_MS:-8000}
+      TELEGRAM_MAX_ATTEMPTS: ${TELEGRAM_MAX_ATTEMPTS:-5}
+      TELEGRAM_RETRY_DELAY_MS: ${TELEGRAM_RETRY_DELAY_MS:-5000}
+      CONSUMER_PREFETCH: ${CONSUMER_PREFETCH:-10}
+      IDEMPOTENCY_CACHE_SIZE: ${IDEMPOTENCY_CACHE_SIZE:-10000}
+    ports:
+      - "${TELEGRAM_PORT:-3002}:3002"
+    restart: unless-stopped
+
+volumes:
+  rabbit-data:
